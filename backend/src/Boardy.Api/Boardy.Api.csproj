@@ -5,6 +5,12 @@
     <ProjectReference Include="..\Boardy.Infrastructure\Boardy.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+  </ItemGroup>
+
   <PropertyGroup>
     <RootNamespace>Boardy.Api</RootNamespace>
     <AssemblyName>Boardy.Api</AssemblyName>
