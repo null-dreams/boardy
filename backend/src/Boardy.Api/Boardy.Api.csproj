@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <ItemGroup>
+    <ProjectReference Include="..\Boardy.Application\Boardy.Application.csproj" />
+    <ProjectReference Include="..\Boardy.Infrastructure\Boardy.Infrastructure.csproj" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Boardy.Api</RootNamespace>

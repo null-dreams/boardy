@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <ItemGroup>
+    <ProjectReference Include="..\Boardy.Application\Boardy.Application.csproj" />
+    <ProjectReference Include="..\Boardy.Domain\Boardy.Domain.csproj" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Boardy.Infrastructure</RootNamespace>
