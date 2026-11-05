@@ -40,10 +40,13 @@ try
     });
 
     app.Run();
+    return 0;
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException)
 {
     Log.Fatal(ex, "Boardy API host terminated unexpectedly");
+    Environment.ExitCode = 1;
+    return 1;
 }
 finally
 {
