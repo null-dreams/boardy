@@ -104,5 +104,52 @@ public class UserTests
         Assert.Equal(TimeSpan.Zero, user.CreatedAt.Offset);
         Assert.InRange(user.CreatedAt, before, after);
     }
-}
 
+    [Fact]
+    public void UpgradeToRegistered_WhenUserIsGuest_ChangesKindToRegisteredAndPreservesState()
+    {
+        // Arrange
+        var user = User.CreateGuest("GuestPlayer");
+        var originalId = user.Id;
+        var originalDisplayName = user.DisplayName;
+        var originalCreatedAt = user.CreatedAt;
+
+        // Act
+        user.UpgradeToRegistered();
+
+        // Assert
+        Assert.Equal(UserKind.Registered, user.Kind);
+        Assert.Equal(originalId, user.Id);
+        Assert.Equal(originalDisplayName, user.DisplayName);
+        Assert.Equal(originalCreatedAt, user.CreatedAt);
+    }
+
+    [Fact]
+    public void UpgradeToRegistered_WhenUserIsAlreadyRegistered_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var user = User.CreateRegistered("RegisteredPlayer");
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => user.UpgradeToRegistered());
+    }
+
+    [Fact]
+    public void UpgradeToRegistered_WhenUpgradeFails_DoesNotMutateEntity()
+    {
+        // Arrange
+        var user = User.CreateRegistered("RegisteredPlayer");
+        var originalId = user.Id;
+        var originalDisplayName = user.DisplayName;
+        var originalKind = user.Kind;
+        var originalCreatedAt = user.CreatedAt;
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => user.UpgradeToRegistered());
+
+        Assert.Equal(originalKind, user.Kind);
+        Assert.Equal(originalId, user.Id);
+        Assert.Equal(originalDisplayName, user.DisplayName);
+        Assert.Equal(originalCreatedAt, user.CreatedAt);
+    }
+}

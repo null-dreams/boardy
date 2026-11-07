@@ -25,6 +25,16 @@ public sealed class User
         return Create(displayName, UserKind.Registered);
     }
 
+    public void UpgradeToRegistered()
+    {
+        if (Kind != UserKind.Guest)
+        {
+            throw new InvalidOperationException("Only guest users can be upgraded to registered.");
+        }
+
+        Kind = UserKind.Registered;
+    }
+
     private static User Create(string displayName, UserKind kind)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
@@ -36,4 +46,3 @@ public sealed class User
             DateTimeOffset.UtcNow);
     }
 }
-
