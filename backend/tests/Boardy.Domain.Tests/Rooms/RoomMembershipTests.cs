@@ -110,5 +110,35 @@ public class RoomMembershipTests
         Assert.True(joinedAtProperty.CanRead);
         Assert.False(joinedAtProperty.CanWrite, "JoinedAt property should not have a setter.");
     }
+
+    [Fact]
+    public void ChangeRole_WithValidRole_UpdatesRoleAndPreservesIdentityAndTimestamp()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var membership = RoomMembership.Create(userId, RoomRole.Host);
+        var originalJoinedAt = membership.JoinedAt;
+
+        // Act
+        membership.ChangeRole(RoomRole.Member);
+
+        // Assert
+        Assert.Equal(RoomRole.Member, membership.Role);
+        Assert.Equal(userId, membership.UserId);
+        Assert.Equal(originalJoinedAt, membership.JoinedAt);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)]
+    [InlineData(99)]
+    public void ChangeRole_WithInvalidRole_ThrowsArgumentException(int invalidRoleValue)
+    {
+        // Arrange
+        var membership = RoomMembership.Create(Guid.NewGuid(), RoomRole.Member);
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => membership.ChangeRole((RoomRole)invalidRoleValue));
+    }
 }
 

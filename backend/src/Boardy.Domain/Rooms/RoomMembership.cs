@@ -1,15 +1,21 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Boardy.Domain.Tests")]
+
 namespace Boardy.Domain.Rooms;
 
 public sealed class RoomMembership
 {
+    private RoomRole _role;
+
     public Guid UserId { get; }
-    public RoomRole Role { get; }
+    public RoomRole Role => _role;
     public DateTimeOffset JoinedAt { get; }
 
     private RoomMembership(Guid userId, RoomRole role, DateTimeOffset joinedAt)
     {
         UserId = userId;
-        Role = role;
+        _role = role;
         JoinedAt = joinedAt;
     }
 
@@ -28,6 +34,15 @@ public sealed class RoomMembership
         return new RoomMembership(userId, role, DateTimeOffset.UtcNow);
     }
 
+    internal void ChangeRole(RoomRole newRole)
+    {
+        if (!Enum.IsDefined(newRole))
+        {
+            throw new ArgumentException($"Invalid room role: {newRole}.", nameof(newRole));
+        }
+
+        _role = newRole;
+    }
+
     public override string ToString() => $"UserId: {UserId}, Role: {Role}, JoinedAt: {JoinedAt:O}";
 }
-
