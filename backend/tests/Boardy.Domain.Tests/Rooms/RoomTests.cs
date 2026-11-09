@@ -432,6 +432,114 @@ public class RoomTests
     }
 
     [Fact]
+    public void RegenerateCode_WithValidNewCode_SuccessfullyUpdatesCodeAndPreservesState()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var originalCode = RoomCode.Create("ABC234");
+        var newCode = RoomCode.Create("XYZ789");
+        var settings = RoomSettings.Default;
+        var room = Room.Create(hostUserId, originalCode, settings);
+        room.AddMember(memberUserId);
+
+        var originalId = room.Id;
+        var originalHostId = room.HostUserId;
+        var originalStatus = room.Status;
+        var originalSettings = room.Settings;
+        var originalCreatedAt = room.CreatedAt;
+
+        // Act
+        room.RegenerateCode(newCode);
+
+        // Assert
+        Assert.Equal(newCode, room.Code);
+        Assert.Same(newCode, room.Code);
+        Assert.Equal(originalId, room.Id);
+        Assert.Equal(originalHostId, room.HostUserId);
+        Assert.Equal(originalStatus, room.Status);
+        Assert.Same(originalSettings, room.Settings);
+        Assert.Equal(originalCreatedAt, room.CreatedAt);
+        Assert.Equal(2, room.Memberships.Count);
+        Assert.Contains(room.Memberships, m => m.UserId == hostUserId && m.Role == RoomRole.Host);
+        Assert.Contains(room.Memberships, m => m.UserId == memberUserId && m.Role == RoomRole.Member);
+    }
+
+    [Theory]
+    [InlineData(RoomStatus.Open)]
+    [InlineData(RoomStatus.StartingMatch)]
+    [InlineData(RoomStatus.InMatch)]
+    public void RegenerateCode_WhenRoomIsOpenOrStartingMatchOrInMatch_AllowsRegeneration(RoomStatus status)
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+        var newCode = RoomCode.Create("XYZ789");
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
+
+        // Act
+        room.RegenerateCode(newCode);
+
+        // Assert
+        Assert.Equal(newCode, room.Code);
+    }
+
+    [Fact]
+    public void RegenerateCode_WithNullCode_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => room.RegenerateCode(null!));
+    }
+
+    [Theory]
+    [InlineData("ABC234")]
+    [InlineData("abc234")]
+    public void RegenerateCode_WithCurrentOrEquivalentCode_ThrowsInvalidOperationException(string equivalentCode)
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+        var duplicateCode = RoomCode.Create(equivalentCode);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.RegenerateCode(duplicateCode));
+    }
+
+    [Fact]
+    public void RegenerateCode_WhenRoomIsClosed_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+        var newCode = RoomCode.Create("XYZ789");
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, RoomStatus.Closed);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.RegenerateCode(newCode));
+    }
+
+    [Fact]
+    public void RegenerateCode_WhenValidationFails_LeavesAggregateStateUnchanged()
+    {
+        // Arrange
+        var originalCode = RoomCode.Create("ABC234");
+        var room = Room.Create(Guid.NewGuid(), originalCode, RoomSettings.Default);
+
+        // Act & Assert (null code)
+        Assert.Throws<ArgumentNullException>(() => room.RegenerateCode(null!));
+        Assert.Same(originalCode, room.Code);
+
+        // Act & Assert (identical code)
+        Assert.Throws<InvalidOperationException>(() => room.RegenerateCode(RoomCode.Create("abc234")));
+        Assert.Same(originalCode, room.Code);
+
+        // Act & Assert (closed state)
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, RoomStatus.Closed);
+        Assert.Throws<InvalidOperationException>(() => room.RegenerateCode(RoomCode.Create("XYZ789")));
+        Assert.Same(originalCode, room.Code);
+    }
+
+    [Fact]
     public void PublicProperties_DoNotExposePublicSetters()
     {
         // Arrange

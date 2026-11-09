@@ -8,7 +8,7 @@ public sealed class Room
     private readonly ReadOnlyCollection<RoomMembership> _readOnlyMemberships;
 
     public Guid Id { get; }
-    public RoomCode Code { get; }
+    public RoomCode Code { get; private set; }
     public Guid HostUserId { get; private set; }
     public RoomStatus Status { get; private set; }
     public RoomSettings Settings { get; private set; }
@@ -126,5 +126,22 @@ public sealed class Room
         currentHostMembership.ChangeRole(RoomRole.Member);
         newHostMembership.ChangeRole(RoomRole.Host);
         HostUserId = newHostUserId;
+    }
+
+    public void RegenerateCode(RoomCode newCode)
+    {
+        ArgumentNullException.ThrowIfNull(newCode);
+
+        if (Status == RoomStatus.Closed)
+        {
+            throw new InvalidOperationException("Cannot regenerate room code for a closed room.");
+        }
+
+        if (newCode == Code)
+        {
+            throw new InvalidOperationException("New room code cannot be identical to the current room code.");
+        }
+
+        Code = newCode;
     }
 }
