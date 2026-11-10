@@ -43,4 +43,36 @@ public static class RoomErrors
     public static readonly Error CannotJoin = new(
         "Room.CannotJoin",
         "Unable to join the room.");
+
+    public static readonly Error UserNotMember = new(
+        "Room.UserNotMember",
+        "The specified user is not a member of this room.");
+
+    public static readonly Error OnlyHostCanTransferHost = new(
+        "Room.OnlyHostCanTransferHost",
+        "Only the room host can transfer the host role.");
+
+    public static readonly Error CannotTransferHostToSelf = new(
+        "Room.CannotTransferHostToSelf",
+        "Cannot transfer host role to the current host.");
+
+    public static readonly Error ProposedHostNotMember = new(
+        "Room.ProposedHostNotMember",
+        "The proposed host is not a member of this room.");
+
+    public static readonly Error HostCannotLeaveWithoutTransfer = new(
+        "Room.HostCannotLeaveWithoutTransfer",
+        "The room host cannot leave without transferring the host role or closing the room.");
+
+    public static readonly Error RoomClosed = new(
+        "Room.Closed",
+        "Cannot perform this operation on a closed room.");
+
+    public static readonly Error CannotCloseRoom = new(
+        "Room.CannotCloseRoom",
+        "Cannot close a room that is not open.");
+
+    public static readonly Error CannotLeaveDuringMatch = new(
+        "Room.CannotLeaveDuringMatch",
+        "Cannot leave a room while a match is starting or in progress.");
 }
