@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using Boardy.Domain.Events;
+using Boardy.Domain.Rooms.Events;
 
 namespace Boardy.Domain.Rooms;
 
@@ -6,6 +8,8 @@ public sealed class Room
 {
     private readonly List<RoomMembership> _memberships = [];
     private readonly ReadOnlyCollection<RoomMembership> _readOnlyMemberships;
+    private readonly List<IDomainEvent> _domainEvents = [];
+    private readonly ReadOnlyCollection<IDomainEvent> _readOnlyDomainEvents;
 
     public Guid Id { get; }
     public RoomCode Code { get; private set; }
@@ -14,6 +18,7 @@ public sealed class Room
     public RoomSettings Settings { get; private set; }
     public DateTimeOffset CreatedAt { get; }
     public IReadOnlyCollection<RoomMembership> Memberships => _readOnlyMemberships;
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => _readOnlyDomainEvents;
 
     private Room(
         Guid id,
@@ -32,6 +37,7 @@ public sealed class Room
         CreatedAt = createdAt;
         _memberships.Add(hostMembership);
         _readOnlyMemberships = _memberships.AsReadOnly();
+        _readOnlyDomainEvents = _domainEvents.AsReadOnly();
     }
 
     public static Room Create(Guid hostUserId, RoomCode code, RoomSettings settings)
@@ -48,7 +54,19 @@ public sealed class Room
         var createdAt = DateTimeOffset.UtcNow;
         var hostMembership = RoomMembership.Create(hostUserId, RoomRole.Host);
 
-        return new Room(id, code, hostUserId, RoomStatus.Open, settings, createdAt, hostMembership);
+        var room = new Room(id, code, hostUserId, RoomStatus.Open, settings, createdAt, hostMembership);
+        room.RecordEvent(new RoomCreatedEvent(id, hostUserId));
+        return room;
+    }
+
+    public void ClearDomainEvents()
+    {
+        _domainEvents.Clear();
+    }
+
+    private void RecordEvent(IDomainEvent domainEvent)
+    {
+        _domainEvents.Add(domainEvent);
     }
 
     public RoomMembership AddMember(Guid userId)
@@ -75,6 +93,7 @@ public sealed class Room
 
         var membership = RoomMembership.Create(userId, RoomRole.Member);
         _memberships.Add(membership);
+        RecordEvent(new RoomMemberJoinedEvent(Id, userId));
         return membership;
     }
 
@@ -102,6 +121,7 @@ public sealed class Room
         }
 
         _memberships.Remove(membership);
+        RecordEvent(new RoomMemberLeftEvent(Id, userId));
     }
 
     public void TransferHost(Guid newHostUserId)
@@ -133,9 +153,11 @@ public sealed class Room
             throw new InvalidOperationException("Current host membership not found in room.");
         }
 
+        var previousHostUserId = HostUserId;
         currentHostMembership.ChangeRole(RoomRole.Member);
         newHostMembership.ChangeRole(RoomRole.Host);
         HostUserId = newHostUserId;
+        RecordEvent(new RoomHostTransferredEvent(Id, previousHostUserId, newHostUserId));
     }
 
     public void RegenerateCode(RoomCode newCode)
@@ -153,6 +175,7 @@ public sealed class Room
         }
 
         Code = newCode;
+        RecordEvent(new RoomCodeRegeneratedEvent(Id));
     }
 
     public void BeginMatch(Guid requestedByUserId)
@@ -173,6 +196,7 @@ public sealed class Room
         }
 
         Status = RoomStatus.StartingMatch;
+        RecordEvent(new RoomMatchInitializationStartedEvent(Id));
     }
 
     public void MarkMatchInProgress()
@@ -183,6 +207,7 @@ public sealed class Room
         }
 
         Status = RoomStatus.InMatch;
+        RecordEvent(new RoomMatchStartedEvent(Id));
     }
 
     public void CancelMatchInitialization()
@@ -193,6 +218,7 @@ public sealed class Room
         }
 
         Status = RoomStatus.Open;
+        RecordEvent(new RoomMatchInitializationCancelledEvent(Id));
     }
 
     public void EndMatch()
@@ -203,6 +229,7 @@ public sealed class Room
         }
 
         Status = RoomStatus.Open;
+        RecordEvent(new RoomMatchEndedEvent(Id));
     }
 
     public void Close(Guid requestedByUserId)
@@ -223,5 +250,6 @@ public sealed class Room
         }
 
         Status = RoomStatus.Closed;
+        RecordEvent(new RoomClosedEvent(Id));
     }
 }

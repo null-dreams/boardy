@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using Boardy.Domain.Events;
+using Boardy.Domain.Matches.Events;
 
 namespace Boardy.Domain.Matches;
 
@@ -10,6 +12,8 @@ public sealed class Match
     private readonly List<MatchParticipation> _spectatorMemberships = [];
     private readonly ReadOnlyCollection<MatchParticipation> _readOnlyParticipantMemberships;
     private readonly ReadOnlyCollection<MatchParticipation> _readOnlySpectatorMemberships;
+    private readonly List<IDomainEvent> _domainEvents = [];
+    private readonly ReadOnlyCollection<IDomainEvent> _readOnlyDomainEvents;
 
     public Guid Id { get; }
 
@@ -22,6 +26,8 @@ public sealed class Match
     public IReadOnlyCollection<MatchParticipation> ParticipantMemberships => _readOnlyParticipantMemberships;
 
     public IReadOnlyCollection<MatchParticipation> SpectatorMemberships => _readOnlySpectatorMemberships;
+
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => _readOnlyDomainEvents;
 
     public DateTimeOffset CreatedAt { get; }
 
@@ -50,6 +56,7 @@ public sealed class Match
         _participantMemberships = participantMemberships;
         _readOnlyParticipantMemberships = _participantMemberships.AsReadOnly();
         _readOnlySpectatorMemberships = _spectatorMemberships.AsReadOnly();
+        _readOnlyDomainEvents = _domainEvents.AsReadOnly();
         Status = MatchStatus.Pending;
         CreatedAt = createdAt;
     }
@@ -89,13 +96,26 @@ public sealed class Match
             throw new ArgumentException("A match must have at least one participant.", nameof(participants));
         }
 
-        return new Match(
+        var match = new Match(
             Guid.NewGuid(),
             gameDefinitionId,
             participantList.AsReadOnly(),
             userIds,
             participantMemberships,
             DateTimeOffset.UtcNow);
+
+        match.RecordEvent(new MatchCreatedEvent(match.Id, gameDefinitionId));
+        return match;
+    }
+
+    public void ClearDomainEvents()
+    {
+        _domainEvents.Clear();
+    }
+
+    private void RecordEvent(IDomainEvent domainEvent)
+    {
+        _domainEvents.Add(domainEvent);
     }
 
     public MatchParticipation AddSpectator(Guid userId)
@@ -122,6 +142,7 @@ public sealed class Match
 
         var spectator = MatchParticipation.CreateSpectator(userId);
         _spectatorMemberships.Add(spectator);
+        RecordEvent(new MatchSpectatorJoinedEvent(Id, userId));
         return spectator;
     }
 
@@ -144,6 +165,7 @@ public sealed class Match
         }
 
         _spectatorMemberships.Remove(spectator);
+        RecordEvent(new MatchSpectatorLeftEvent(Id, userId));
     }
 
     public void DisconnectParticipant(Guid userId)
@@ -165,6 +187,7 @@ public sealed class Match
         }
 
         participant.Disconnect();
+        RecordEvent(new MatchParticipantDisconnectedEvent(Id, userId));
     }
 
     public void ReconnectParticipant(Guid userId)
@@ -186,6 +209,7 @@ public sealed class Match
         }
 
         participant.Reconnect();
+        RecordEvent(new MatchParticipantReconnectedEvent(Id, userId));
     }
 
     public void ForfeitParticipant(Guid userId)
@@ -207,6 +231,7 @@ public sealed class Match
         }
 
         participant.Forfeit();
+        RecordEvent(new MatchParticipantForfeitedEvent(Id, userId));
     }
 
     public void BeginInitialization()
@@ -217,6 +242,7 @@ public sealed class Match
         }
 
         Status = MatchStatus.Initializing;
+        RecordEvent(new MatchInitializationStartedEvent(Id));
     }
 
     public void Activate()
@@ -228,6 +254,7 @@ public sealed class Match
 
         Status = MatchStatus.Active;
         StartedAt = DateTimeOffset.UtcNow;
+        RecordEvent(new MatchStartedEvent(Id));
     }
 
     public void Complete(MatchResult result)
@@ -250,6 +277,7 @@ public sealed class Match
         Status = MatchStatus.Completed;
         Result = result;
         CompletedAt = DateTimeOffset.UtcNow;
+        RecordEvent(new MatchCompletedEvent(Id, result));
     }
 
     public void Abort(MatchAbortReason reason)
@@ -291,5 +319,6 @@ public sealed class Match
         Status = MatchStatus.Aborted;
         AbortReason = reason;
         AbortedAt = DateTimeOffset.UtcNow;
+        RecordEvent(new MatchAbortedEvent(Id, reason));
     }
 }
