@@ -30,7 +30,8 @@ internal sealed class FakeRoomRepository : IRoomRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (CommittedRoomIdsByCode.TryGetValue(code.Value, out var id) &&
-            CommittedRoomsById.TryGetValue(id, out var room))
+            CommittedRoomsById.TryGetValue(id, out var room) &&
+            room.Code == code)
         {
             return Task.FromResult<Room?>(room);
         }
@@ -49,6 +50,15 @@ internal sealed class FakeRoomRepository : IRoomRepository
 
         _unitOfWork.RegisterCommitAction(() =>
         {
+            var oldEntries = CommittedRoomIdsByCode
+                .Where(kvp => kvp.Value == room.Id && kvp.Key != room.Code.Value)
+                .Select(kvp => kvp.Key)
+                .ToList();
+            foreach (var oldCode in oldEntries)
+            {
+                CommittedRoomIdsByCode.Remove(oldCode);
+            }
+
             CommittedRoomsById[room.Id] = room;
             CommittedRoomIdsByCode[room.Code.Value] = room.Id;
         });
@@ -67,6 +77,15 @@ internal sealed class FakeRoomRepository : IRoomRepository
 
         _unitOfWork.RegisterCommitAction(() =>
         {
+            var oldEntries = CommittedRoomIdsByCode
+                .Where(kvp => kvp.Value == room.Id && kvp.Key != room.Code.Value)
+                .Select(kvp => kvp.Key)
+                .ToList();
+            foreach (var oldCode in oldEntries)
+            {
+                CommittedRoomIdsByCode.Remove(oldCode);
+            }
+
             CommittedRoomsById[room.Id] = room;
             CommittedRoomIdsByCode[room.Code.Value] = room.Id;
         });

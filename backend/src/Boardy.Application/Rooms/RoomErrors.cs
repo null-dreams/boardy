@@ -75,4 +75,16 @@ public static class RoomErrors
     public static readonly Error CannotLeaveDuringMatch = new(
         "Room.CannotLeaveDuringMatch",
         "Cannot leave a room while a match is starting or in progress.");
+
+    public static readonly Error OnlyHostCanRegenerateCode = new(
+        "Room.OnlyHostCanRegenerateCode",
+        "Only the room host can regenerate the room code.");
+
+    public static readonly Error OnlyHostCanCloseRoom = new(
+        "Room.OnlyHostCanCloseRoom",
+        "Only the room host can close the room.");
+
+    public static readonly Error CannotCloseDuringMatch = new(
+        "Room.CannotCloseDuringMatch",
+        "Cannot close a room while a match is starting or in progress.");
 }
