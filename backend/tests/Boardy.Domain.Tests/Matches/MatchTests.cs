@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using Boardy.Domain.Matches;
 
@@ -508,6 +509,383 @@ public class MatchTests
         {
             Assert.True(property.SetMethod == null || !property.SetMethod.IsPublic,
                 $"Property '{property.Name}' should not have a public setter.");
+        }
+    }
+
+    // ==========================================
+    // Membership Management Tests
+    // ==========================================
+
+    [Fact]
+    public void Create_InitializesParticipantMembershipsFromSnapshots()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var p2 = CreateParticipant(1, "Bob");
+
+        // Act
+        var match = Match.Create(CreateGameDef(), [p1, p2]);
+
+        // Assert
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+        Assert.Empty(match.SpectatorMemberships);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(MatchRole.Participant, m1.Role);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+
+        var m2 = match.ParticipantMemberships.Single(m => m.UserId == p2.UserId);
+        Assert.Equal(MatchRole.Participant, m2.Role);
+        Assert.Equal(ParticipationStatus.Active, m2.Status);
+    }
+
+    [Fact]
+    public void AddSpectator_WithValidUserId_AdmitsSpectatorSuccessfully()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorUserId = Guid.NewGuid();
+        var before = DateTimeOffset.UtcNow;
+
+        // Act
+        var spectator = match.AddSpectator(spectatorUserId);
+        var after = DateTimeOffset.UtcNow;
+
+        // Assert
+        Assert.NotNull(spectator);
+        Assert.Equal(spectatorUserId, spectator.UserId);
+        Assert.Equal(MatchRole.Spectator, spectator.Role);
+        Assert.Null(spectator.Status);
+        Assert.InRange(spectator.JoinedAt, before, after);
+
+        Assert.Single(match.SpectatorMemberships);
+        Assert.Same(spectator, match.SpectatorMemberships.First());
+
+        // Participants unchanged
+        Assert.Single(match.Participants);
+        Assert.Single(match.ParticipantMemberships);
+    }
+
+    [Fact]
+    public void AddSpectator_WithEmptyUserId_ThrowsArgumentException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+
+        // Act & Assert
+        var ex = Assert.Throws<ArgumentException>(() => match.AddSpectator(Guid.Empty));
+        Assert.Equal("userId", ex.ParamName);
+        Assert.Empty(match.SpectatorMemberships);
+    }
+
+    [Fact]
+    public void AddSpectator_WithParticipantUserId_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.AddSpectator(p1.UserId));
+        Assert.Contains(p1.UserId.ToString(), ex.Message);
+        Assert.Empty(match.SpectatorMemberships);
+    }
+
+    [Fact]
+    public void AddSpectator_WithAlreadyAdmittedSpectator_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorUserId = Guid.NewGuid();
+        match.AddSpectator(spectatorUserId);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.AddSpectator(spectatorUserId));
+        Assert.Contains(spectatorUserId.ToString(), ex.Message);
+        Assert.Single(match.SpectatorMemberships);
+    }
+
+    [Fact]
+    public void ParticipantMemberships_AreNotRemovable_AndExposeNoRemovalMethod()
+    {
+        // Assert: Match type must not have RemoveParticipant method
+        var removeMethod = typeof(Match).GetMethod("RemoveParticipant", BindingFlags.Public | BindingFlags.Instance);
+        Assert.Null(removeMethod);
+    }
+
+    [Fact]
+    public void ParticipantMemberships_RemainPresentAndUnchanged_AcrossSpectatorMutations()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var p2 = CreateParticipant(1, "Bob");
+        var match = Match.Create(CreateGameDef(), [p1, p2]);
+
+        var spectatorId = Guid.NewGuid();
+
+        // Act: Add and remove spectator
+        match.AddSpectator(spectatorId);
+        match.RemoveSpectator(spectatorId);
+
+        // Assert: Participant memberships must remain exactly 2 with matching user IDs
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+        Assert.Contains(match.ParticipantMemberships, m => m.UserId == p1.UserId);
+        Assert.Contains(match.ParticipantMemberships, m => m.UserId == p2.UserId);
+
+        // Snapshots unchanged
+        Assert.Equal(2, match.Participants.Count);
+        Assert.Contains(p1, match.Participants);
+        Assert.Contains(p2, match.Participants);
+    }
+
+    [Fact]
+    public void ParticipantMemberships_RemainPresentAndUnchanged_ThroughoutMatchLifecycle()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var p2 = CreateParticipant(1, "Bob");
+        var match = Match.Create(CreateGameDef(), [p1, p2]);
+
+        // Pending
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+
+        // Initializing
+        match.BeginInitialization();
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+
+        // Active
+        match.Activate();
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+
+        // Completed
+        match.Complete(MatchResult.Create([p1.UserId]));
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+        Assert.Contains(match.ParticipantMemberships, m => m.UserId == p1.UserId && m.Role == MatchRole.Participant);
+        Assert.Contains(match.ParticipantMemberships, m => m.UserId == p2.UserId && m.Role == MatchRole.Participant);
+    }
+
+    [Fact]
+    public void RemoveSpectator_WithValidUserId_RemovesFromSpectatorMemberships_PreservingParticipants()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var s1 = Guid.NewGuid();
+        var s2 = Guid.NewGuid();
+        match.AddSpectator(s1);
+        match.AddSpectator(s2);
+
+        // Act
+        match.RemoveSpectator(s1);
+
+        // Assert
+        Assert.Single(match.SpectatorMemberships);
+        Assert.Equal(s2, match.SpectatorMemberships.Single().UserId);
+
+        // Participants unaffected
+        Assert.Single(match.ParticipantMemberships);
+        Assert.Single(match.Participants);
+    }
+
+    [Fact]
+    public void RemoveSpectator_WithEmptyUserId_ThrowsArgumentException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorId = Guid.NewGuid();
+        match.AddSpectator(spectatorId);
+
+        // Act & Assert
+        var ex = Assert.Throws<ArgumentException>(() => match.RemoveSpectator(Guid.Empty));
+        Assert.Equal("userId", ex.ParamName);
+        Assert.Single(match.SpectatorMemberships);
+    }
+
+    [Fact]
+    public void RemoveSpectator_WithNonexistentUserId_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var unknownId = Guid.NewGuid();
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.RemoveSpectator(unknownId));
+        Assert.Contains(unknownId.ToString(), ex.Message);
+    }
+
+    [Fact]
+    public void RemoveSpectator_WithParticipantUserId_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.RemoveSpectator(p1.UserId));
+        Assert.Contains(p1.UserId.ToString(), ex.Message);
+    }
+
+    [Fact]
+    public void RemoveSpectator_CalledTwiceOnSameUser_ThrowsInvalidOperationExceptionOnSecondCall()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorId = Guid.NewGuid();
+        match.AddSpectator(spectatorId);
+
+        // First removal succeeds
+        match.RemoveSpectator(spectatorId);
+        Assert.Empty(match.SpectatorMemberships);
+
+        // Second removal fails
+        var ex = Assert.Throws<InvalidOperationException>(() => match.RemoveSpectator(spectatorId));
+        Assert.Contains(spectatorId.ToString(), ex.Message);
+        Assert.Empty(match.SpectatorMemberships);
+    }
+
+    [Theory]
+    [InlineData(MatchStatus.Pending)]
+    [InlineData(MatchStatus.Initializing)]
+    [InlineData(MatchStatus.Active)]
+    public void SpectatorOperations_AllowedInNonTerminalStates(MatchStatus targetStatus)
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var p2 = CreateParticipant(1, "Bob");
+        var match = Match.Create(CreateGameDef(), [p1, p2]);
+
+        if (targetStatus >= MatchStatus.Initializing)
+        {
+            match.BeginInitialization();
+        }
+
+        if (targetStatus >= MatchStatus.Active)
+        {
+            match.Activate();
+        }
+
+        // Act & Assert: Add spectator
+        var spectatorId = Guid.NewGuid();
+        var spectator = match.AddSpectator(spectatorId);
+        Assert.Equal(spectatorId, spectator.UserId);
+        Assert.Single(match.SpectatorMemberships);
+
+        // Act & Assert: Remove spectator
+        match.RemoveSpectator(spectatorId);
+        Assert.Empty(match.SpectatorMemberships);
+
+        // Participant memberships remain unchanged
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+    }
+
+    [Fact]
+    public void SpectatorOperations_RejectedWhenCompleted_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorId = Guid.NewGuid();
+        match.AddSpectator(spectatorId);
+
+        match.BeginInitialization();
+        match.Activate();
+        match.Complete(MatchResult.Create([p1.UserId]));
+
+        var newSpectatorId = Guid.NewGuid();
+
+        // Act & Assert: AddSpectator
+        var exAdd = Assert.Throws<InvalidOperationException>(() => match.AddSpectator(newSpectatorId));
+        Assert.Contains("Completed", exAdd.Message);
+
+        // Act & Assert: RemoveSpectator
+        var exRemSpec = Assert.Throws<InvalidOperationException>(() => match.RemoveSpectator(spectatorId));
+        Assert.Contains("Completed", exRemSpec.Message);
+
+        // Verify state remains unchanged
+        Assert.Single(match.ParticipantMemberships);
+        Assert.Single(match.SpectatorMemberships);
+        Assert.Single(match.Participants);
+        Assert.Equal(MatchStatus.Completed, match.Status);
+    }
+
+    [Fact]
+    public void SpectatorOperations_RejectedWhenAborted_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorId = Guid.NewGuid();
+        match.AddSpectator(spectatorId);
+
+        match.BeginInitialization();
+        match.Abort(MatchAbortReason.InitializationFailed);
+
+        var newSpectatorId = Guid.NewGuid();
+
+        // Act & Assert: AddSpectator
+        var exAdd = Assert.Throws<InvalidOperationException>(() => match.AddSpectator(newSpectatorId));
+        Assert.Contains("Aborted", exAdd.Message);
+
+        // Act & Assert: RemoveSpectator
+        var exRemSpec = Assert.Throws<InvalidOperationException>(() => match.RemoveSpectator(spectatorId));
+        Assert.Contains("Aborted", exRemSpec.Message);
+
+        // Verify state remains unchanged
+        Assert.Single(match.ParticipantMemberships);
+        Assert.Single(match.SpectatorMemberships);
+        Assert.Single(match.Participants);
+        Assert.Equal(MatchStatus.Aborted, match.Status);
+    }
+
+    [Fact]
+    public void SpectatorsProperty_DoesNotExistOnMatch()
+    {
+        // Assert
+        var property = typeof(Match).GetProperty("Spectators", BindingFlags.Public | BindingFlags.Instance);
+        Assert.Null(property);
+    }
+
+    [Fact]
+    public void MembershipCollections_CannotBeExternallyModified()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorId = Guid.NewGuid();
+        match.AddSpectator(spectatorId);
+
+        var dummyParticipation = MatchParticipation.CreateSpectator(Guid.NewGuid());
+
+        // ParticipantMemberships generic IList
+        if (match.ParticipantMemberships is IList<MatchParticipation> participantList)
+        {
+            Assert.Throws<NotSupportedException>(() => participantList.Add(dummyParticipation));
+        }
+
+        // ParticipantMemberships non-generic IList
+        if (match.ParticipantMemberships is IList participantNonGeneric)
+        {
+            Assert.True(participantNonGeneric.IsReadOnly);
+            Assert.Throws<NotSupportedException>(() => participantNonGeneric.Add(dummyParticipation));
+        }
+
+        // SpectatorMemberships generic IList
+        if (match.SpectatorMemberships is IList<MatchParticipation> spectatorMembershipsList)
+        {
+            Assert.Throws<NotSupportedException>(() => spectatorMembershipsList.Add(dummyParticipation));
+        }
+
+        // SpectatorMemberships non-generic IList
+        if (match.SpectatorMemberships is IList spectatorMembershipsNonGeneric)
+        {
+            Assert.True(spectatorMembershipsNonGeneric.IsReadOnly);
+            Assert.Throws<NotSupportedException>(() => spectatorMembershipsNonGeneric.Add(dummyParticipation));
         }
     }
 }

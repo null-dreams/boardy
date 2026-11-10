@@ -6,6 +6,10 @@ public sealed class Match
 {
     private readonly ReadOnlyCollection<MatchParticipantSnapshot> _participants;
     private readonly HashSet<Guid> _participantUserIds;
+    private readonly List<MatchParticipation> _participantMemberships;
+    private readonly List<MatchParticipation> _spectatorMemberships = [];
+    private readonly ReadOnlyCollection<MatchParticipation> _readOnlyParticipantMemberships;
+    private readonly ReadOnlyCollection<MatchParticipation> _readOnlySpectatorMemberships;
 
     public Guid Id { get; }
 
@@ -14,6 +18,10 @@ public sealed class Match
     public MatchStatus Status { get; private set; }
 
     public IReadOnlyCollection<MatchParticipantSnapshot> Participants => _participants;
+
+    public IReadOnlyCollection<MatchParticipation> ParticipantMemberships => _readOnlyParticipantMemberships;
+
+    public IReadOnlyCollection<MatchParticipation> SpectatorMemberships => _readOnlySpectatorMemberships;
 
     public DateTimeOffset CreatedAt { get; }
 
@@ -32,12 +40,16 @@ public sealed class Match
         GameDefinitionId gameDefinitionId,
         ReadOnlyCollection<MatchParticipantSnapshot> participants,
         HashSet<Guid> participantUserIds,
+        List<MatchParticipation> participantMemberships,
         DateTimeOffset createdAt)
     {
         Id = id;
         GameDefinitionId = gameDefinitionId;
         _participants = participants;
         _participantUserIds = participantUserIds;
+        _participantMemberships = participantMemberships;
+        _readOnlyParticipantMemberships = _participantMemberships.AsReadOnly();
+        _readOnlySpectatorMemberships = _spectatorMemberships.AsReadOnly();
         Status = MatchStatus.Pending;
         CreatedAt = createdAt;
     }
@@ -50,6 +62,7 @@ public sealed class Match
         ArgumentNullException.ThrowIfNull(participants);
 
         var participantList = new List<MatchParticipantSnapshot>();
+        var participantMemberships = new List<MatchParticipation>();
         var userIds = new HashSet<Guid>();
         var seatOrders = new HashSet<int>();
 
@@ -68,6 +81,7 @@ public sealed class Match
             }
 
             participantList.Add(participant);
+            participantMemberships.Add(MatchParticipation.CreateParticipant(participant.UserId));
         }
 
         if (participantList.Count == 0)
@@ -80,7 +94,56 @@ public sealed class Match
             gameDefinitionId,
             participantList.AsReadOnly(),
             userIds,
+            participantMemberships,
             DateTimeOffset.UtcNow);
+    }
+
+    public MatchParticipation AddSpectator(Guid userId)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        if (Status is MatchStatus.Completed or MatchStatus.Aborted)
+        {
+            throw new InvalidOperationException($"Cannot add spectator when match status is '{Status}'.");
+        }
+
+        if (_participantUserIds.Contains(userId))
+        {
+            throw new InvalidOperationException($"User '{userId}' is in the participant roster and cannot be admitted as a spectator.");
+        }
+
+        if (_spectatorMemberships.Any(s => s.UserId == userId))
+        {
+            throw new InvalidOperationException($"User '{userId}' is already a spectator in this match.");
+        }
+
+        var spectator = MatchParticipation.CreateSpectator(userId);
+        _spectatorMemberships.Add(spectator);
+        return spectator;
+    }
+
+    public void RemoveSpectator(Guid userId)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        if (Status is MatchStatus.Completed or MatchStatus.Aborted)
+        {
+            throw new InvalidOperationException($"Cannot remove spectator when match status is '{Status}'.");
+        }
+
+        var spectator = _spectatorMemberships.FirstOrDefault(s => s.UserId == userId);
+        if (spectator is null)
+        {
+            throw new InvalidOperationException($"User '{userId}' is not a spectator in this match.");
+        }
+
+        _spectatorMemberships.Remove(spectator);
     }
 
     public void BeginInitialization()
