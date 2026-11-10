@@ -85,6 +85,188 @@ public class MatchParticipationTests
     }
 
     [Fact]
+    public void TransitionMethods_AreNotPublic()
+    {
+        // Arrange
+        var transitionMethodNames = new[] { "Disconnect", "Reconnect", "Forfeit" };
+
+        // Assert
+        foreach (var methodName in transitionMethodNames)
+        {
+            var publicMethod = typeof(MatchParticipation).GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+            Assert.Null(publicMethod);
+
+            var internalMethod = typeof(MatchParticipation).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(internalMethod);
+            Assert.True(internalMethod.IsAssembly, $"Method '{methodName}' should be internal.");
+        }
+    }
+
+    // ==========================================
+    // Lifecycle Transition Tests
+    // ==========================================
+
+    [Fact]
+    public void Disconnect_WhenActive_TransitionsToDisconnected_PreservingOtherFields()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var participation = MatchParticipation.CreateParticipant(userId);
+        var joinedAt = participation.JoinedAt;
+
+        // Act
+        participation.Disconnect();
+
+        // Assert
+        Assert.Equal(ParticipationStatus.Disconnected, participation.Status);
+        Assert.Equal(userId, participation.UserId);
+        Assert.Equal(MatchRole.Participant, participation.Role);
+        Assert.Equal(joinedAt, participation.JoinedAt);
+    }
+
+    [Fact]
+    public void Reconnect_WhenDisconnected_TransitionsToActive_PreservingOtherFields()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var participation = MatchParticipation.CreateParticipant(userId);
+        var joinedAt = participation.JoinedAt;
+        participation.Disconnect();
+
+        // Act
+        participation.Reconnect();
+
+        // Assert
+        Assert.Equal(ParticipationStatus.Active, participation.Status);
+        Assert.Equal(userId, participation.UserId);
+        Assert.Equal(MatchRole.Participant, participation.Role);
+        Assert.Equal(joinedAt, participation.JoinedAt);
+    }
+
+    [Fact]
+    public void Forfeit_WhenActive_TransitionsToForfeited_PreservingOtherFields()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var participation = MatchParticipation.CreateParticipant(userId);
+        var joinedAt = participation.JoinedAt;
+
+        // Act
+        participation.Forfeit();
+
+        // Assert
+        Assert.Equal(ParticipationStatus.Forfeited, participation.Status);
+        Assert.Equal(userId, participation.UserId);
+        Assert.Equal(MatchRole.Participant, participation.Role);
+        Assert.Equal(joinedAt, participation.JoinedAt);
+    }
+
+    [Fact]
+    public void Forfeit_WhenDisconnected_TransitionsToForfeited_PreservingOtherFields()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var participation = MatchParticipation.CreateParticipant(userId);
+        var joinedAt = participation.JoinedAt;
+        participation.Disconnect();
+
+        // Act
+        participation.Forfeit();
+
+        // Assert
+        Assert.Equal(ParticipationStatus.Forfeited, participation.Status);
+        Assert.Equal(userId, participation.UserId);
+        Assert.Equal(MatchRole.Participant, participation.Role);
+        Assert.Equal(joinedAt, participation.JoinedAt);
+    }
+
+    [Fact]
+    public void Disconnect_WhenAlreadyDisconnected_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var participation = MatchParticipation.CreateParticipant(Guid.NewGuid());
+        participation.Disconnect();
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => participation.Disconnect());
+        Assert.Contains("already disconnected", ex.Message);
+        Assert.Equal(ParticipationStatus.Disconnected, participation.Status);
+    }
+
+    [Fact]
+    public void Disconnect_WhenForfeited_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var participation = MatchParticipation.CreateParticipant(Guid.NewGuid());
+        participation.Forfeit();
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => participation.Disconnect());
+        Assert.Contains("forfeited", ex.Message);
+        Assert.Equal(ParticipationStatus.Forfeited, participation.Status);
+    }
+
+    [Fact]
+    public void Reconnect_WhenAlreadyActive_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var participation = MatchParticipation.CreateParticipant(Guid.NewGuid());
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => participation.Reconnect());
+        Assert.Contains("already active", ex.Message);
+        Assert.Equal(ParticipationStatus.Active, participation.Status);
+    }
+
+    [Fact]
+    public void Reconnect_WhenForfeited_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var participation = MatchParticipation.CreateParticipant(Guid.NewGuid());
+        participation.Forfeit();
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => participation.Reconnect());
+        Assert.Contains("forfeited", ex.Message);
+        Assert.Equal(ParticipationStatus.Forfeited, participation.Status);
+    }
+
+    [Fact]
+    public void Forfeit_WhenAlreadyForfeited_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var participation = MatchParticipation.CreateParticipant(Guid.NewGuid());
+        participation.Forfeit();
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => participation.Forfeit());
+        Assert.Contains("already forfeited", ex.Message);
+        Assert.Equal(ParticipationStatus.Forfeited, participation.Status);
+    }
+
+    [Fact]
+    public void Transitions_WhenSpectator_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var spectator = MatchParticipation.CreateSpectator(Guid.NewGuid());
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => spectator.Disconnect());
+        Assert.Contains("Spectators do not have a participation status", exDisc.Message);
+        Assert.Null(spectator.Status);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => spectator.Reconnect());
+        Assert.Contains("Spectators do not have a participation status", exRec.Message);
+        Assert.Null(spectator.Status);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => spectator.Forfeit());
+        Assert.Contains("Spectators do not have a participation status", exForf.Message);
+        Assert.Null(spectator.Status);
+    }
+
+    [Fact]
     public void ToString_ReturnsExpectedFormat()
     {
         // Arrange

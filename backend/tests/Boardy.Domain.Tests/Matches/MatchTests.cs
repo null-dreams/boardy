@@ -888,4 +888,370 @@ public class MatchTests
             Assert.Throws<NotSupportedException>(() => spectatorMembershipsNonGeneric.Add(dummyParticipation));
         }
     }
+
+    // ==========================================
+    // Participation Lifecycle & Forfeiture Tests
+    // ==========================================
+
+    [Fact]
+    public void DisconnectParticipant_WhenMatchActiveAndParticipantActive_TransitionsToDisconnected()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var p2 = CreateParticipant(1, "Bob");
+        var match = Match.Create(CreateGameDef(), [p1, p2]);
+        match.BeginInitialization();
+        match.Activate();
+
+        // Act
+        match.DisconnectParticipant(p1.UserId);
+
+        // Assert
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Disconnected, m1.Status);
+
+        var m2 = match.ParticipantMemberships.Single(m => m.UserId == p2.UserId);
+        Assert.Equal(ParticipationStatus.Active, m2.Status);
+
+        // Snapshots unchanged
+        Assert.Equal(2, match.Participants.Count);
+        Assert.Equal(2, match.ParticipantMemberships.Count);
+    }
+
+    [Fact]
+    public void ReconnectParticipant_WhenMatchActiveAndParticipantDisconnected_TransitionsToActive()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        match.DisconnectParticipant(p1.UserId);
+
+        // Act
+        match.ReconnectParticipant(p1.UserId);
+
+        // Assert
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ForfeitParticipant_WhenMatchActiveAndParticipantActive_TransitionsToForfeited()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+
+        // Act
+        match.ForfeitParticipant(p1.UserId);
+
+        // Assert
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Forfeited, m1.Status);
+    }
+
+    [Fact]
+    public void ForfeitParticipant_WhenMatchActiveAndParticipantDisconnected_TransitionsToForfeited()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        match.DisconnectParticipant(p1.UserId);
+
+        // Act
+        match.ForfeitParticipant(p1.UserId);
+
+        // Assert
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Forfeited, m1.Status);
+    }
+
+    [Fact]
+    public void DisconnectParticipant_WhenAlreadyDisconnected_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        match.DisconnectParticipant(p1.UserId);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(p1.UserId));
+        Assert.Contains("already disconnected", ex.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Disconnected, m1.Status);
+    }
+
+    [Fact]
+    public void ReconnectParticipant_WhenAlreadyActive_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(p1.UserId));
+        Assert.Contains("already active", ex.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ReconnectParticipant_WhenForfeited_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        match.ForfeitParticipant(p1.UserId);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(p1.UserId));
+        Assert.Contains("forfeited", ex.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Forfeited, m1.Status);
+    }
+
+    [Fact]
+    public void ForfeitParticipant_WhenAlreadyForfeited_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        match.ForfeitParticipant(p1.UserId);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(p1.UserId));
+        Assert.Contains("already forfeited", ex.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Forfeited, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_WithEmptyUserId_ThrowsArgumentException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<ArgumentException>(() => match.DisconnectParticipant(Guid.Empty));
+        Assert.Equal("userId", exDisc.ParamName);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<ArgumentException>(() => match.ReconnectParticipant(Guid.Empty));
+        Assert.Equal("userId", exRec.ParamName);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<ArgumentException>(() => match.ForfeitParticipant(Guid.Empty));
+        Assert.Equal("userId", exForf.ParamName);
+
+        // State remains active
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_WithUnknownUserId_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        var unknownUserId = Guid.NewGuid();
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(unknownUserId));
+        Assert.Contains(unknownUserId.ToString(), exDisc.Message);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(unknownUserId));
+        Assert.Contains(unknownUserId.ToString(), exRec.Message);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(unknownUserId));
+        Assert.Contains(unknownUserId.ToString(), exForf.Message);
+
+        // State remains active
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_WithSpectatorUserId_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        var spectatorId = Guid.NewGuid();
+        match.AddSpectator(spectatorId);
+        match.BeginInitialization();
+        match.Activate();
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(spectatorId));
+        Assert.Contains(spectatorId.ToString(), exDisc.Message);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(spectatorId));
+        Assert.Contains(spectatorId.ToString(), exRec.Message);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(spectatorId));
+        Assert.Contains(spectatorId.ToString(), exForf.Message);
+
+        // Participant status remains active, spectator status remains null
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+        var s1 = match.SpectatorMemberships.Single(s => s.UserId == spectatorId);
+        Assert.Null(s1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_RejectedWhenPending_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(p1.UserId));
+        Assert.Contains("Pending", exDisc.Message);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(p1.UserId));
+        Assert.Contains("Pending", exRec.Message);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(p1.UserId));
+        Assert.Contains("Pending", exForf.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_RejectedWhenInitializing_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(p1.UserId));
+        Assert.Contains("Initializing", exDisc.Message);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(p1.UserId));
+        Assert.Contains("Initializing", exRec.Message);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(p1.UserId));
+        Assert.Contains("Initializing", exForf.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_RejectedWhenCompleted_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Activate();
+        match.Complete(MatchResult.Create([p1.UserId]));
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(p1.UserId));
+        Assert.Contains("Completed", exDisc.Message);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(p1.UserId));
+        Assert.Contains("Completed", exRec.Message);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(p1.UserId));
+        Assert.Contains("Completed", exForf.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_RejectedWhenAborted_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var match = Match.Create(CreateGameDef(), [p1]);
+        match.BeginInitialization();
+        match.Abort(MatchAbortReason.InitializationFailed);
+
+        // Act & Assert: Disconnect
+        var exDisc = Assert.Throws<InvalidOperationException>(() => match.DisconnectParticipant(p1.UserId));
+        Assert.Contains("Aborted", exDisc.Message);
+
+        // Act & Assert: Reconnect
+        var exRec = Assert.Throws<InvalidOperationException>(() => match.ReconnectParticipant(p1.UserId));
+        Assert.Contains("Aborted", exRec.Message);
+
+        // Act & Assert: Forfeit
+        var exForf = Assert.Throws<InvalidOperationException>(() => match.ForfeitParticipant(p1.UserId));
+        Assert.Contains("Aborted", exForf.Message);
+
+        var m1 = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Equal(ParticipationStatus.Active, m1.Status);
+    }
+
+    [Fact]
+    public void ParticipantLifecycleOperations_PreserveSnapshotsAndMembershipIntegrity()
+    {
+        // Arrange
+        var p1 = CreateParticipant(0, "Alice");
+        var p2 = CreateParticipant(1, "Bob");
+        var match = Match.Create(CreateGameDef(), [p1, p2]);
+        match.BeginInitialization();
+        match.Activate();
+
+        var m1Before = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        var originalJoinedAt = m1Before.JoinedAt;
+
+        // Act
+        match.DisconnectParticipant(p1.UserId);
+        match.ReconnectParticipant(p1.UserId);
+        match.ForfeitParticipant(p1.UserId);
+
+        // Assert
+        var m1After = match.ParticipantMemberships.Single(m => m.UserId == p1.UserId);
+        Assert.Same(m1Before, m1After);
+        Assert.Equal(p1.UserId, m1After.UserId);
+        Assert.Equal(MatchRole.Participant, m1After.Role);
+        Assert.Equal(originalJoinedAt, m1After.JoinedAt);
+        Assert.Equal(ParticipationStatus.Forfeited, m1After.Status);
+
+        // Snapshots unchanged
+        Assert.Equal(2, match.Participants.Count);
+        Assert.Contains(p1, match.Participants);
+        Assert.Contains(p2, match.Participants);
+    }
 }

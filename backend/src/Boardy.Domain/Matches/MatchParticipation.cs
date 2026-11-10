@@ -60,5 +60,75 @@ public sealed class MatchParticipation
         return new MatchParticipation(userId, MatchRole.Spectator, null, DateTimeOffset.UtcNow);
     }
 
+    internal void Disconnect()
+    {
+        if (Role != MatchRole.Participant || Status is null)
+        {
+            throw new InvalidOperationException("Spectators do not have a participation status.");
+        }
+
+        if (Status == ParticipationStatus.Disconnected)
+        {
+            throw new InvalidOperationException("Participant is already disconnected.");
+        }
+
+        if (Status == ParticipationStatus.Forfeited)
+        {
+            throw new InvalidOperationException("Cannot disconnect a forfeited participant.");
+        }
+
+        if (Status != ParticipationStatus.Active)
+        {
+            throw new InvalidOperationException($"Cannot disconnect participant with status '{Status}'.");
+        }
+
+        Status = ParticipationStatus.Disconnected;
+    }
+
+    internal void Reconnect()
+    {
+        if (Role != MatchRole.Participant || Status is null)
+        {
+            throw new InvalidOperationException("Spectators do not have a participation status.");
+        }
+
+        if (Status == ParticipationStatus.Active)
+        {
+            throw new InvalidOperationException("Participant is already active.");
+        }
+
+        if (Status == ParticipationStatus.Forfeited)
+        {
+            throw new InvalidOperationException("A forfeited participant cannot reconnect.");
+        }
+
+        if (Status != ParticipationStatus.Disconnected)
+        {
+            throw new InvalidOperationException($"Cannot reconnect participant with status '{Status}'.");
+        }
+
+        Status = ParticipationStatus.Active;
+    }
+
+    internal void Forfeit()
+    {
+        if (Role != MatchRole.Participant || Status is null)
+        {
+            throw new InvalidOperationException("Spectators do not have a participation status.");
+        }
+
+        if (Status == ParticipationStatus.Forfeited)
+        {
+            throw new InvalidOperationException("Participant has already forfeited.");
+        }
+
+        if (Status != ParticipationStatus.Active && Status != ParticipationStatus.Disconnected)
+        {
+            throw new InvalidOperationException($"Cannot forfeit participant with status '{Status}'.");
+        }
+
+        Status = ParticipationStatus.Forfeited;
+    }
+
     public override string ToString() => $"UserId: {UserId}, Role: {Role}, Status: {Status}, JoinedAt: {JoinedAt:O}";
 }

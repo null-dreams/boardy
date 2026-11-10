@@ -146,6 +146,69 @@ public sealed class Match
         _spectatorMemberships.Remove(spectator);
     }
 
+    public void DisconnectParticipant(Guid userId)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        if (Status != MatchStatus.Active)
+        {
+            throw new InvalidOperationException($"Cannot disconnect participant when match status is '{Status}'.");
+        }
+
+        var participant = _participantMemberships.FirstOrDefault(p => p.UserId == userId);
+        if (participant is null)
+        {
+            throw new InvalidOperationException($"User '{userId}' is not a participant in this match.");
+        }
+
+        participant.Disconnect();
+    }
+
+    public void ReconnectParticipant(Guid userId)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        if (Status != MatchStatus.Active)
+        {
+            throw new InvalidOperationException($"Cannot reconnect participant when match status is '{Status}'.");
+        }
+
+        var participant = _participantMemberships.FirstOrDefault(p => p.UserId == userId);
+        if (participant is null)
+        {
+            throw new InvalidOperationException($"User '{userId}' is not a participant in this match.");
+        }
+
+        participant.Reconnect();
+    }
+
+    public void ForfeitParticipant(Guid userId)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        if (Status != MatchStatus.Active)
+        {
+            throw new InvalidOperationException($"Cannot forfeit participant when match status is '{Status}'.");
+        }
+
+        var participant = _participantMemberships.FirstOrDefault(p => p.UserId == userId);
+        if (participant is null)
+        {
+            throw new InvalidOperationException($"User '{userId}' is not a participant in this match.");
+        }
+
+        participant.Forfeit();
+    }
+
     public void BeginInitialization()
     {
         if (Status != MatchStatus.Pending)
