@@ -150,7 +150,7 @@ public class RegenerateRoomCodeHandlerTests
         var memberId = Guid.NewGuid();
         var room = Room.Create(hostId, RoomCode.Create("PRVCDE"), RoomSettings.Default);
         room.AddMember(memberId);
-        room.BeginMatch(hostId);
+        room.BeginMatch(hostId, Guid.NewGuid());
         room.MarkMatchInProgress();
 
         await _roomRepository.AddAsync(room);

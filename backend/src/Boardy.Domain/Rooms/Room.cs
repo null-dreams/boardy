@@ -16,6 +16,7 @@ public sealed class Room
     public Guid HostUserId { get; private set; }
     public RoomStatus Status { get; private set; }
     public RoomSettings Settings { get; private set; }
+    public Guid? ActiveMatchId { get; private set; }
     public DateTimeOffset CreatedAt { get; }
     public IReadOnlyCollection<RoomMembership> Memberships => _readOnlyMemberships;
     public IReadOnlyCollection<IDomainEvent> DomainEvents => _readOnlyDomainEvents;
@@ -27,7 +28,8 @@ public sealed class Room
         RoomStatus status,
         RoomSettings settings,
         DateTimeOffset createdAt,
-        RoomMembership hostMembership)
+        RoomMembership hostMembership,
+        Guid? activeMatchId = null)
     {
         Id = id;
         Code = code;
@@ -35,6 +37,7 @@ public sealed class Room
         Status = status;
         Settings = settings;
         CreatedAt = createdAt;
+        ActiveMatchId = activeMatchId;
         _memberships.Add(hostMembership);
         _readOnlyMemberships = _memberships.AsReadOnly();
         _readOnlyDomainEvents = _domainEvents.AsReadOnly();
@@ -178,11 +181,16 @@ public sealed class Room
         RecordEvent(new RoomCodeRegeneratedEvent(Id));
     }
 
-    public void BeginMatch(Guid requestedByUserId)
+    public void BeginMatch(Guid requestedByUserId, Guid matchId)
     {
         if (requestedByUserId == Guid.Empty)
         {
             throw new ArgumentException("Requester user ID cannot be empty.", nameof(requestedByUserId));
+        }
+
+        if (matchId == Guid.Empty)
+        {
+            throw new ArgumentException("Match ID cannot be empty.", nameof(matchId));
         }
 
         if (requestedByUserId != HostUserId)
@@ -196,7 +204,8 @@ public sealed class Room
         }
 
         Status = RoomStatus.StartingMatch;
-        RecordEvent(new RoomMatchInitializationStartedEvent(Id));
+        ActiveMatchId = matchId;
+        RecordEvent(new RoomMatchInitializationStartedEvent(Id, matchId));
     }
 
     public void MarkMatchInProgress()
@@ -206,8 +215,13 @@ public sealed class Room
             throw new InvalidOperationException($"Cannot mark match in progress when room status is {Status}.");
         }
 
+        if (!ActiveMatchId.HasValue || ActiveMatchId.Value == Guid.Empty)
+        {
+            throw new InvalidOperationException("Active match ID must be set when starting a match.");
+        }
+
         Status = RoomStatus.InMatch;
-        RecordEvent(new RoomMatchStartedEvent(Id));
+        RecordEvent(new RoomMatchStartedEvent(Id, ActiveMatchId.Value));
     }
 
     public void CancelMatchInitialization()
@@ -217,8 +231,15 @@ public sealed class Room
             throw new InvalidOperationException($"Cannot cancel match initialization when room status is {Status}.");
         }
 
+        if (!ActiveMatchId.HasValue || ActiveMatchId.Value == Guid.Empty)
+        {
+            throw new InvalidOperationException("Active match ID must be set when starting a match.");
+        }
+
+        var matchId = ActiveMatchId.Value;
         Status = RoomStatus.Open;
-        RecordEvent(new RoomMatchInitializationCancelledEvent(Id));
+        ActiveMatchId = null;
+        RecordEvent(new RoomMatchInitializationCancelledEvent(Id, matchId));
     }
 
     public void EndMatch()
@@ -228,8 +249,15 @@ public sealed class Room
             throw new InvalidOperationException($"Cannot end match when room status is {Status}.");
         }
 
+        if (!ActiveMatchId.HasValue || ActiveMatchId.Value == Guid.Empty)
+        {
+            throw new InvalidOperationException("Active match ID must be set when match is in progress.");
+        }
+
+        var matchId = ActiveMatchId.Value;
         Status = RoomStatus.Open;
-        RecordEvent(new RoomMatchEndedEvent(Id));
+        ActiveMatchId = null;
+        RecordEvent(new RoomMatchEndedEvent(Id, matchId));
     }
 
     public void Close(Guid requestedByUserId)
@@ -249,7 +277,13 @@ public sealed class Room
             throw new InvalidOperationException($"Cannot close a room when status is {Status}.");
         }
 
+        if (ActiveMatchId.HasValue)
+        {
+            throw new InvalidOperationException("Cannot close a room with an active match association.");
+        }
+
         Status = RoomStatus.Closed;
+        ActiveMatchId = null;
         RecordEvent(new RoomClosedEvent(Id));
     }
 }

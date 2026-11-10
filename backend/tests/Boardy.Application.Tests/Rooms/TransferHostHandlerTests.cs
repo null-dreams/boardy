@@ -195,7 +195,7 @@ public class TransferHostHandlerTests
         var memberId = Guid.NewGuid();
         var room = Room.Create(hostId, RoomCode.Create("ABCDEF"), RoomSettings.Default);
         room.AddMember(memberId);
-        room.BeginMatch(hostId);
+        room.BeginMatch(hostId, Guid.NewGuid());
 
         await _roomRepository.AddAsync(room);
         await _unitOfWork.SaveChangesAsync();
@@ -216,7 +216,7 @@ public class TransferHostHandlerTests
         var memberId = Guid.NewGuid();
         var room = Room.Create(hostId, RoomCode.Create("ABCDEF"), RoomSettings.Default);
         room.AddMember(memberId);
-        room.BeginMatch(hostId);
+        room.BeginMatch(hostId, Guid.NewGuid());
         room.MarkMatchInProgress();
 
         await _roomRepository.AddAsync(room);

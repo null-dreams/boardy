@@ -540,17 +540,32 @@ public class RoomTests
     }
 
     [Fact]
-    public void BeginMatch_ByHost_TransitionsFromOpenToStartingMatch()
+    public void BeginMatch_ByHost_TransitionsFromOpenToStartingMatch_AndAssociatesMatchId()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+
+        // Act
+        room.BeginMatch(hostUserId, matchId);
+
+        // Assert
+        Assert.Equal(RoomStatus.StartingMatch, room.Status);
+        Assert.Equal(matchId, room.ActiveMatchId);
+    }
+
+    [Fact]
+    public void BeginMatch_WithEmptyMatchId_ThrowsArgumentException_AndLeavesStateUnchanged()
     {
         // Arrange
         var hostUserId = Guid.NewGuid();
         var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
 
-        // Act
-        room.BeginMatch(hostUserId);
-
-        // Assert
-        Assert.Equal(RoomStatus.StartingMatch, room.Status);
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => room.BeginMatch(hostUserId, Guid.Empty));
+        Assert.Equal(RoomStatus.Open, room.Status);
+        Assert.Null(room.ActiveMatchId);
     }
 
     [Fact]
@@ -559,12 +574,14 @@ public class RoomTests
         // Arrange
         var hostUserId = Guid.NewGuid();
         var memberUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
         var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
         room.AddMember(memberUserId);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(memberUserId));
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(memberUserId, matchId));
         Assert.Equal(RoomStatus.Open, room.Status);
+        Assert.Null(room.ActiveMatchId);
     }
 
     [Fact]
@@ -574,8 +591,9 @@ public class RoomTests
         var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
 
         // Act & Assert
-        Assert.Throws<ArgumentException>(() => room.BeginMatch(Guid.Empty));
+        Assert.Throws<ArgumentException>(() => room.BeginMatch(Guid.Empty, Guid.NewGuid()));
         Assert.Equal(RoomStatus.Open, room.Status);
+        Assert.Null(room.ActiveMatchId);
     }
 
     [Theory]
@@ -586,27 +604,30 @@ public class RoomTests
     {
         // Arrange
         var hostUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
         var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
         typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(hostUserId));
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(hostUserId, matchId));
         Assert.Equal(status, room.Status);
     }
 
     [Fact]
-    public void MarkMatchInProgress_WhenStartingMatch_TransitionsToInMatch()
+    public void MarkMatchInProgress_WhenStartingMatch_TransitionsToInMatch_AndPreservesMatchId()
     {
         // Arrange
         var hostUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
         var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
-        room.BeginMatch(hostUserId);
+        room.BeginMatch(hostUserId, matchId);
 
         // Act
         room.MarkMatchInProgress();
 
         // Assert
         Assert.Equal(RoomStatus.InMatch, room.Status);
+        Assert.Equal(matchId, room.ActiveMatchId);
     }
 
     [Theory]
@@ -625,18 +646,20 @@ public class RoomTests
     }
 
     [Fact]
-    public void CancelMatchInitialization_WhenStartingMatch_TransitionsToOpen()
+    public void CancelMatchInitialization_WhenStartingMatch_TransitionsToOpen_AndClearsActiveMatchId()
     {
         // Arrange
         var hostUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
         var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
-        room.BeginMatch(hostUserId);
+        room.BeginMatch(hostUserId, matchId);
 
         // Act
         room.CancelMatchInitialization();
 
         // Assert
         Assert.Equal(RoomStatus.Open, room.Status);
+        Assert.Null(room.ActiveMatchId);
     }
 
     [Theory]
@@ -655,12 +678,13 @@ public class RoomTests
     }
 
     [Fact]
-    public void EndMatch_WhenInMatch_TransitionsToOpen()
+    public void EndMatch_WhenInMatch_TransitionsToOpen_AndClearsActiveMatchId()
     {
         // Arrange
         var hostUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
         var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
-        room.BeginMatch(hostUserId);
+        room.BeginMatch(hostUserId, matchId);
         room.MarkMatchInProgress();
 
         // Act
@@ -668,6 +692,7 @@ public class RoomTests
 
         // Assert
         Assert.Equal(RoomStatus.Open, room.Status);
+        Assert.Null(room.ActiveMatchId);
     }
 
     [Theory]
@@ -691,6 +716,7 @@ public class RoomTests
         // Arrange
         var hostUserId = Guid.NewGuid();
         var memberUserId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
         var code = RoomCode.Create("ABC234");
         var settings = RoomSettings.Default;
         var room = Room.Create(hostUserId, code, settings);
@@ -699,14 +725,18 @@ public class RoomTests
         var originalId = room.Id;
         var originalCreatedAt = room.CreatedAt;
 
+        // Invariant at Open: ActiveMatchId is null
+        Assert.Null(room.ActiveMatchId);
+
         // Transition: Open -> StartingMatch
-        room.BeginMatch(hostUserId);
+        room.BeginMatch(hostUserId, matchId);
         Assert.Equal(originalId, room.Id);
         Assert.Same(code, room.Code);
         Assert.Equal(hostUserId, room.HostUserId);
         Assert.Same(settings, room.Settings);
         Assert.Equal(originalCreatedAt, room.CreatedAt);
         Assert.Equal(2, room.Memberships.Count);
+        Assert.Equal(matchId, room.ActiveMatchId);
 
         // Transition: StartingMatch -> InMatch
         room.MarkMatchInProgress();
@@ -716,6 +746,7 @@ public class RoomTests
         Assert.Same(settings, room.Settings);
         Assert.Equal(originalCreatedAt, room.CreatedAt);
         Assert.Equal(2, room.Memberships.Count);
+        Assert.Equal(matchId, room.ActiveMatchId);
 
         // Transition: InMatch -> Open
         room.EndMatch();
@@ -725,6 +756,7 @@ public class RoomTests
         Assert.Same(settings, room.Settings);
         Assert.Equal(originalCreatedAt, room.CreatedAt);
         Assert.Equal(2, room.Memberships.Count);
+        Assert.Null(room.ActiveMatchId);
     }
 
     [Fact]
@@ -827,9 +859,11 @@ public class RoomTests
         Assert.Equal(RoomStatus.Open, room.Status);
 
         // Transition to StartingMatch and assert closure is rejected
-        room.BeginMatch(hostUserId);
+        var matchId = Guid.NewGuid();
+        room.BeginMatch(hostUserId, matchId);
         Assert.Throws<InvalidOperationException>(() => room.Close(hostUserId));
         Assert.Equal(RoomStatus.StartingMatch, room.Status);
+        Assert.Equal(matchId, room.ActiveMatchId);
     }
 
     [Fact]
@@ -858,13 +892,14 @@ public class RoomTests
         Assert.Throws<InvalidOperationException>(() => room.RegenerateCode(RoomCode.Create("XYZ789")));
 
         // Assert: BeginMatch is rejected
-        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(hostUserId));
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(hostUserId, Guid.NewGuid()));
 
         // Assert: Close is rejected
         Assert.Throws<InvalidOperationException>(() => room.Close(hostUserId));
 
         // State remains intact
         Assert.Equal(RoomStatus.Closed, room.Status);
+        Assert.Null(room.ActiveMatchId);
         Assert.Equal(2, room.Memberships.Count);
         Assert.Equal(hostUserId, room.HostUserId);
     }

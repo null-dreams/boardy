@@ -133,31 +133,40 @@ public class RoomDomainEventTests
     public void RoomMatchLifecycleEvents_SetPropertiesCorrectly_AndRejectEmptyGuids()
     {
         var roomId = Guid.NewGuid();
+        var matchId = Guid.NewGuid();
 
-        var startInit = new RoomMatchInitializationStartedEvent(roomId);
+        var startInit = new RoomMatchInitializationStartedEvent(roomId, matchId);
         Assert.Equal(roomId, startInit.RoomId);
+        Assert.Equal(matchId, startInit.MatchId);
         Assert.NotEqual(Guid.Empty, startInit.EventId);
 
-        var cancelInit = new RoomMatchInitializationCancelledEvent(roomId);
+        var cancelInit = new RoomMatchInitializationCancelledEvent(roomId, matchId);
         Assert.Equal(roomId, cancelInit.RoomId);
+        Assert.Equal(matchId, cancelInit.MatchId);
         Assert.NotEqual(Guid.Empty, cancelInit.EventId);
 
-        var started = new RoomMatchStartedEvent(roomId);
+        var started = new RoomMatchStartedEvent(roomId, matchId);
         Assert.Equal(roomId, started.RoomId);
+        Assert.Equal(matchId, started.MatchId);
         Assert.NotEqual(Guid.Empty, started.EventId);
 
-        var ended = new RoomMatchEndedEvent(roomId);
+        var ended = new RoomMatchEndedEvent(roomId, matchId);
         Assert.Equal(roomId, ended.RoomId);
+        Assert.Equal(matchId, ended.MatchId);
         Assert.NotEqual(Guid.Empty, ended.EventId);
 
         var closed = new RoomClosedEvent(roomId);
         Assert.Equal(roomId, closed.RoomId);
         Assert.NotEqual(Guid.Empty, closed.EventId);
 
-        Assert.Throws<ArgumentException>(() => new RoomMatchInitializationStartedEvent(Guid.Empty));
-        Assert.Throws<ArgumentException>(() => new RoomMatchInitializationCancelledEvent(Guid.Empty));
-        Assert.Throws<ArgumentException>(() => new RoomMatchStartedEvent(Guid.Empty));
-        Assert.Throws<ArgumentException>(() => new RoomMatchEndedEvent(Guid.Empty));
+        Assert.Throws<ArgumentException>(() => new RoomMatchInitializationStartedEvent(Guid.Empty, matchId));
+        Assert.Throws<ArgumentException>(() => new RoomMatchInitializationStartedEvent(roomId, Guid.Empty));
+        Assert.Throws<ArgumentException>(() => new RoomMatchInitializationCancelledEvent(Guid.Empty, matchId));
+        Assert.Throws<ArgumentException>(() => new RoomMatchInitializationCancelledEvent(roomId, Guid.Empty));
+        Assert.Throws<ArgumentException>(() => new RoomMatchStartedEvent(Guid.Empty, matchId));
+        Assert.Throws<ArgumentException>(() => new RoomMatchStartedEvent(roomId, Guid.Empty));
+        Assert.Throws<ArgumentException>(() => new RoomMatchEndedEvent(Guid.Empty, matchId));
+        Assert.Throws<ArgumentException>(() => new RoomMatchEndedEvent(roomId, Guid.Empty));
         Assert.Throws<ArgumentException>(() => new RoomClosedEvent(Guid.Empty));
     }
 
@@ -243,19 +252,22 @@ public class RoomDomainEventTests
     {
         var room = CreateTestRoom(out var hostId, out _);
         room.ClearDomainEvents();
+        var matchId = Guid.NewGuid();
 
-        room.BeginMatch(hostId);
+        room.BeginMatch(hostId, matchId);
 
         Assert.Single(room.DomainEvents);
         var evt = Assert.IsType<RoomMatchInitializationStartedEvent>(room.DomainEvents.First());
         Assert.Equal(room.Id, evt.RoomId);
+        Assert.Equal(matchId, evt.MatchId);
     }
 
     [Fact]
     public void CancelMatchInitialization_RecordsRoomMatchInitializationCancelledEvent()
     {
         var room = CreateTestRoom(out var hostId, out _);
-        room.BeginMatch(hostId);
+        var matchId = Guid.NewGuid();
+        room.BeginMatch(hostId, matchId);
         room.ClearDomainEvents();
 
         room.CancelMatchInitialization();
@@ -263,13 +275,15 @@ public class RoomDomainEventTests
         Assert.Single(room.DomainEvents);
         var evt = Assert.IsType<RoomMatchInitializationCancelledEvent>(room.DomainEvents.First());
         Assert.Equal(room.Id, evt.RoomId);
+        Assert.Equal(matchId, evt.MatchId);
     }
 
     [Fact]
     public void MarkMatchInProgress_RecordsRoomMatchStartedEvent()
     {
         var room = CreateTestRoom(out var hostId, out _);
-        room.BeginMatch(hostId);
+        var matchId = Guid.NewGuid();
+        room.BeginMatch(hostId, matchId);
         room.ClearDomainEvents();
 
         room.MarkMatchInProgress();
@@ -277,13 +291,15 @@ public class RoomDomainEventTests
         Assert.Single(room.DomainEvents);
         var evt = Assert.IsType<RoomMatchStartedEvent>(room.DomainEvents.First());
         Assert.Equal(room.Id, evt.RoomId);
+        Assert.Equal(matchId, evt.MatchId);
     }
 
     [Fact]
     public void EndMatch_RecordsRoomMatchEndedEvent()
     {
         var room = CreateTestRoom(out var hostId, out _);
-        room.BeginMatch(hostId);
+        var matchId = Guid.NewGuid();
+        room.BeginMatch(hostId, matchId);
         room.MarkMatchInProgress();
         room.ClearDomainEvents();
 
@@ -292,6 +308,7 @@ public class RoomDomainEventTests
         Assert.Single(room.DomainEvents);
         var evt = Assert.IsType<RoomMatchEndedEvent>(room.DomainEvents.First());
         Assert.Equal(room.Id, evt.RoomId);
+        Assert.Equal(matchId, evt.MatchId);
     }
 
     [Fact]
@@ -319,7 +336,8 @@ public class RoomDomainEventTests
         room.RegenerateCode(RoomCode.Create("NEW234"));
         room.RemoveMember(member2);
         room.TransferHost(member1);
-        room.BeginMatch(member1);
+        var matchId = Guid.NewGuid();
+        room.BeginMatch(member1, matchId);
         room.MarkMatchInProgress();
         room.EndMatch();
         room.Close(member1);
@@ -372,7 +390,7 @@ public class RoomDomainEventTests
         Assert.Empty(room.DomainEvents);
 
         // 7. Begin match by non-host
-        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(memberId));
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(memberId, Guid.NewGuid()));
         Assert.Empty(room.DomainEvents);
 
         // 8. Mark match in progress when Open

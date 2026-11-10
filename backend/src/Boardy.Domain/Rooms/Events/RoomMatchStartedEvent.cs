@@ -5,14 +5,21 @@ namespace Boardy.Domain.Rooms.Events;
 public sealed record RoomMatchStartedEvent : DomainEvent
 {
     public Guid RoomId { get; }
+    public Guid MatchId { get; }
 
-    public RoomMatchStartedEvent(Guid roomId)
+    public RoomMatchStartedEvent(Guid roomId, Guid matchId)
     {
         if (roomId == Guid.Empty)
         {
             throw new ArgumentException("Room ID cannot be empty.", nameof(roomId));
         }
 
+        if (matchId == Guid.Empty)
+        {
+            throw new ArgumentException("Match ID cannot be empty.", nameof(matchId));
+        }
+
         RoomId = roomId;
+        MatchId = matchId;
     }
 }
