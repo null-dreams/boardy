@@ -540,6 +540,194 @@ public class RoomTests
     }
 
     [Fact]
+    public void BeginMatch_ByHost_TransitionsFromOpenToStartingMatch()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+
+        // Act
+        room.BeginMatch(hostUserId);
+
+        // Assert
+        Assert.Equal(RoomStatus.StartingMatch, room.Status);
+    }
+
+    [Fact]
+    public void BeginMatch_ByNonHost_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.AddMember(memberUserId);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(memberUserId));
+        Assert.Equal(RoomStatus.Open, room.Status);
+    }
+
+    [Fact]
+    public void BeginMatch_WithEmptyRequesterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => room.BeginMatch(Guid.Empty));
+        Assert.Equal(RoomStatus.Open, room.Status);
+    }
+
+    [Theory]
+    [InlineData(RoomStatus.StartingMatch)]
+    [InlineData(RoomStatus.InMatch)]
+    [InlineData(RoomStatus.Closed)]
+    public void BeginMatch_WhenNotInOpenStatus_ThrowsInvalidOperationException_AndLeavesStateUnchanged(RoomStatus status)
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(hostUserId));
+        Assert.Equal(status, room.Status);
+    }
+
+    [Fact]
+    public void MarkMatchInProgress_WhenStartingMatch_TransitionsToInMatch()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.BeginMatch(hostUserId);
+
+        // Act
+        room.MarkMatchInProgress();
+
+        // Assert
+        Assert.Equal(RoomStatus.InMatch, room.Status);
+    }
+
+    [Theory]
+    [InlineData(RoomStatus.Open)]
+    [InlineData(RoomStatus.InMatch)]
+    [InlineData(RoomStatus.Closed)]
+    public void MarkMatchInProgress_WhenNotInStartingMatchStatus_ThrowsInvalidOperationException_AndLeavesStateUnchanged(RoomStatus status)
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.MarkMatchInProgress());
+        Assert.Equal(status, room.Status);
+    }
+
+    [Fact]
+    public void CancelMatchInitialization_WhenStartingMatch_TransitionsToOpen()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.BeginMatch(hostUserId);
+
+        // Act
+        room.CancelMatchInitialization();
+
+        // Assert
+        Assert.Equal(RoomStatus.Open, room.Status);
+    }
+
+    [Theory]
+    [InlineData(RoomStatus.Open)]
+    [InlineData(RoomStatus.InMatch)]
+    [InlineData(RoomStatus.Closed)]
+    public void CancelMatchInitialization_WhenNotInStartingMatchStatus_ThrowsInvalidOperationException_AndLeavesStateUnchanged(RoomStatus status)
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.CancelMatchInitialization());
+        Assert.Equal(status, room.Status);
+    }
+
+    [Fact]
+    public void EndMatch_WhenInMatch_TransitionsToOpen()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.BeginMatch(hostUserId);
+        room.MarkMatchInProgress();
+
+        // Act
+        room.EndMatch();
+
+        // Assert
+        Assert.Equal(RoomStatus.Open, room.Status);
+    }
+
+    [Theory]
+    [InlineData(RoomStatus.Open)]
+    [InlineData(RoomStatus.StartingMatch)]
+    [InlineData(RoomStatus.Closed)]
+    public void EndMatch_WhenNotInInMatchStatus_ThrowsInvalidOperationException_AndLeavesStateUnchanged(RoomStatus status)
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.EndMatch());
+        Assert.Equal(status, room.Status);
+    }
+
+    [Fact]
+    public void MatchLifecycleTransitions_PreserveAggregateStateThroughoutLifecycle()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var code = RoomCode.Create("ABC234");
+        var settings = RoomSettings.Default;
+        var room = Room.Create(hostUserId, code, settings);
+        room.AddMember(memberUserId);
+
+        var originalId = room.Id;
+        var originalCreatedAt = room.CreatedAt;
+
+        // Transition: Open -> StartingMatch
+        room.BeginMatch(hostUserId);
+        Assert.Equal(originalId, room.Id);
+        Assert.Same(code, room.Code);
+        Assert.Equal(hostUserId, room.HostUserId);
+        Assert.Same(settings, room.Settings);
+        Assert.Equal(originalCreatedAt, room.CreatedAt);
+        Assert.Equal(2, room.Memberships.Count);
+
+        // Transition: StartingMatch -> InMatch
+        room.MarkMatchInProgress();
+        Assert.Equal(originalId, room.Id);
+        Assert.Same(code, room.Code);
+        Assert.Equal(hostUserId, room.HostUserId);
+        Assert.Same(settings, room.Settings);
+        Assert.Equal(originalCreatedAt, room.CreatedAt);
+        Assert.Equal(2, room.Memberships.Count);
+
+        // Transition: InMatch -> Open
+        room.EndMatch();
+        Assert.Equal(originalId, room.Id);
+        Assert.Same(code, room.Code);
+        Assert.Equal(hostUserId, room.HostUserId);
+        Assert.Same(settings, room.Settings);
+        Assert.Equal(originalCreatedAt, room.CreatedAt);
+        Assert.Equal(2, room.Memberships.Count);
+    }
+
+    [Fact]
     public void PublicProperties_DoNotExposePublicSetters()
     {
         // Arrange

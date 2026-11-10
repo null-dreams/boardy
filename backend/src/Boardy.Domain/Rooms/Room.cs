@@ -144,4 +144,54 @@ public sealed class Room
 
         Code = newCode;
     }
+
+    public void BeginMatch(Guid requestedByUserId)
+    {
+        if (requestedByUserId == Guid.Empty)
+        {
+            throw new ArgumentException("Requester user ID cannot be empty.", nameof(requestedByUserId));
+        }
+
+        if (requestedByUserId != HostUserId)
+        {
+            throw new InvalidOperationException("Only the room host can initiate a match.");
+        }
+
+        if (Status != RoomStatus.Open)
+        {
+            throw new InvalidOperationException($"Cannot initiate a match when room status is {Status}.");
+        }
+
+        Status = RoomStatus.StartingMatch;
+    }
+
+    public void MarkMatchInProgress()
+    {
+        if (Status != RoomStatus.StartingMatch)
+        {
+            throw new InvalidOperationException($"Cannot mark match in progress when room status is {Status}.");
+        }
+
+        Status = RoomStatus.InMatch;
+    }
+
+    public void CancelMatchInitialization()
+    {
+        if (Status != RoomStatus.StartingMatch)
+        {
+            throw new InvalidOperationException($"Cannot cancel match initialization when room status is {Status}.");
+        }
+
+        Status = RoomStatus.Open;
+    }
+
+    public void EndMatch()
+    {
+        if (Status != RoomStatus.InMatch)
+        {
+            throw new InvalidOperationException($"Cannot end match when room status is {Status}.");
+        }
+
+        Status = RoomStatus.Open;
+    }
 }
