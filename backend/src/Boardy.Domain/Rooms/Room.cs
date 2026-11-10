@@ -85,6 +85,11 @@ public sealed class Room
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         }
 
+        if (Status == RoomStatus.Closed)
+        {
+            throw new InvalidOperationException("Cannot remove members from a closed room.");
+        }
+
         if (userId == HostUserId)
         {
             throw new InvalidOperationException("Cannot remove the room host. Host role must be transferred before removal.");
@@ -104,6 +109,11 @@ public sealed class Room
         if (newHostUserId == Guid.Empty)
         {
             throw new ArgumentException("New host user ID cannot be empty.", nameof(newHostUserId));
+        }
+
+        if (Status == RoomStatus.Closed)
+        {
+            throw new InvalidOperationException("Cannot transfer host in a closed room.");
         }
 
         if (newHostUserId == HostUserId)
@@ -193,5 +203,25 @@ public sealed class Room
         }
 
         Status = RoomStatus.Open;
+    }
+
+    public void Close(Guid requestedByUserId)
+    {
+        if (requestedByUserId == Guid.Empty)
+        {
+            throw new ArgumentException("Requester user ID cannot be empty.", nameof(requestedByUserId));
+        }
+
+        if (requestedByUserId != HostUserId)
+        {
+            throw new InvalidOperationException("Only the room host can close the room.");
+        }
+
+        if (Status != RoomStatus.Open)
+        {
+            throw new InvalidOperationException($"Cannot close a room when status is {Status}.");
+        }
+
+        Status = RoomStatus.Closed;
     }
 }

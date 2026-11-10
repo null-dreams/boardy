@@ -728,6 +728,148 @@ public class RoomTests
     }
 
     [Fact]
+    public void Close_ByHostWhenOpen_TransitionsToClosedAndPreservesState()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var code = RoomCode.Create("ABC234");
+        var settings = RoomSettings.Default;
+        var room = Room.Create(hostUserId, code, settings);
+        room.AddMember(memberUserId);
+
+        var originalId = room.Id;
+        var originalCreatedAt = room.CreatedAt;
+
+        // Act
+        room.Close(hostUserId);
+
+        // Assert
+        Assert.Equal(RoomStatus.Closed, room.Status);
+        Assert.Equal(originalId, room.Id);
+        Assert.Same(code, room.Code);
+        Assert.Equal(hostUserId, room.HostUserId);
+        Assert.Same(settings, room.Settings);
+        Assert.Equal(originalCreatedAt, room.CreatedAt);
+        Assert.Equal(2, room.Memberships.Count);
+        Assert.Contains(room.Memberships, m => m.UserId == hostUserId && m.Role == RoomRole.Host);
+        Assert.Contains(room.Memberships, m => m.UserId == memberUserId && m.Role == RoomRole.Member);
+    }
+
+    [Fact]
+    public void Close_WithEmptyRequesterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var room = Room.Create(Guid.NewGuid(), RoomCode.Create("ABC234"), RoomSettings.Default);
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => room.Close(Guid.Empty));
+        Assert.Equal(RoomStatus.Open, room.Status);
+    }
+
+    [Fact]
+    public void Close_ByNonHost_ThrowsInvalidOperationException_AndLeavesStateUnchanged()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.AddMember(memberUserId);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.Close(memberUserId));
+        Assert.Equal(RoomStatus.Open, room.Status);
+    }
+
+    [Theory]
+    [InlineData(RoomStatus.StartingMatch)]
+    [InlineData(RoomStatus.InMatch)]
+    public void Close_WhenInActiveMatchStates_ThrowsInvalidOperationException_AndLeavesStateUnchanged(RoomStatus status)
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        typeof(Room).GetProperty(nameof(Room.Status))!.SetValue(room, status);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.Close(hostUserId));
+        Assert.Equal(status, room.Status);
+    }
+
+    [Fact]
+    public void Close_WhenAlreadyClosed_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.Close(hostUserId);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => room.Close(hostUserId));
+        Assert.Equal(RoomStatus.Closed, room.Status);
+    }
+
+    [Fact]
+    public void Close_WhenValidationFails_LeavesAggregateStateUnchanged()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.AddMember(memberUserId);
+
+        // Act & Assert (empty Guid)
+        Assert.Throws<ArgumentException>(() => room.Close(Guid.Empty));
+        Assert.Equal(RoomStatus.Open, room.Status);
+
+        // Act & Assert (non-host)
+        Assert.Throws<InvalidOperationException>(() => room.Close(memberUserId));
+        Assert.Equal(RoomStatus.Open, room.Status);
+
+        // Transition to StartingMatch and assert closure is rejected
+        room.BeginMatch(hostUserId);
+        Assert.Throws<InvalidOperationException>(() => room.Close(hostUserId));
+        Assert.Equal(RoomStatus.StartingMatch, room.Status);
+    }
+
+    [Fact]
+    public void ClosedRoom_RejectsAllMutatingOperations()
+    {
+        // Arrange
+        var hostUserId = Guid.NewGuid();
+        var memberUserId = Guid.NewGuid();
+        var newUserId = Guid.NewGuid();
+        var room = Room.Create(hostUserId, RoomCode.Create("ABC234"), RoomSettings.Default);
+        room.AddMember(memberUserId);
+
+        // Act
+        room.Close(hostUserId);
+
+        // Assert: AddMember is rejected
+        Assert.Throws<InvalidOperationException>(() => room.AddMember(newUserId));
+
+        // Assert: RemoveMember is rejected
+        Assert.Throws<InvalidOperationException>(() => room.RemoveMember(memberUserId));
+
+        // Assert: TransferHost is rejected
+        Assert.Throws<InvalidOperationException>(() => room.TransferHost(memberUserId));
+
+        // Assert: RegenerateCode is rejected
+        Assert.Throws<InvalidOperationException>(() => room.RegenerateCode(RoomCode.Create("XYZ789")));
+
+        // Assert: BeginMatch is rejected
+        Assert.Throws<InvalidOperationException>(() => room.BeginMatch(hostUserId));
+
+        // Assert: Close is rejected
+        Assert.Throws<InvalidOperationException>(() => room.Close(hostUserId));
+
+        // State remains intact
+        Assert.Equal(RoomStatus.Closed, room.Status);
+        Assert.Equal(2, room.Memberships.Count);
+        Assert.Equal(hostUserId, room.HostUserId);
+    }
+
+    [Fact]
     public void PublicProperties_DoNotExposePublicSetters()
     {
         // Arrange
